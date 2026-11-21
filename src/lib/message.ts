@@ -218,8 +218,7 @@ export function extractLinks(text: string): string[] {
 
 export function analyzeMessage(text: string): MessageAnalysis {
   const input = text.trim();
-  const words = input ? input.split(/\s+/).length : 0;
-  const lowerHost = input.toLowerCase();
+  const words = input ? input.split(/\s+/).filter(Boolean).length : 0;
 
   const signals: MessageSignal[] = [];
   const categories: string[] = [];
@@ -347,6 +346,6 @@ export function analyzeMessage(text: string): MessageAnalysis {
     signals: signals.slice(0, 8),
     links,
     actions: actions.slice(0, 4),
-    words: words || lowerHost.split(/\s+/).filter(Boolean).length,
+    words,
   };
 }

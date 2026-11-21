@@ -34,7 +34,7 @@ const verdictMeta: Record<
 function ShieldEmblem({ verdict }: { verdict: Verdict }) {
   const ribbon = verdict === "dangerous" ? "#dc2626" : verdict === "suspicious" ? "#d97706" : "#059669";
   const ribbonDark = verdict === "dangerous" ? "#991b1b" : verdict === "suspicious" ? "#92400e" : "#065f46";
-  const shield = verdict === "dangerous" ? "#0f766e" : verdict === "suspicious" ? "#0f766e" : "#0f766e";
+  const shield = "#0f766e";
   return (
     <svg viewBox="0 0 200 178" className="h-[150px] w-[170px]" aria-hidden>
       <defs>
@@ -113,6 +113,8 @@ export default function Scanner() {
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const scanningRef = useRef(false);
+  const lastScanAtRef = useRef(0);
+  const canvasCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePayload = useCallback(
@@ -133,6 +135,7 @@ export default function Scanner() {
 
   const stopCamera = useCallback(() => {
     scanningRef.current = false;
+    lastScanAtRef.current = 0;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -142,23 +145,33 @@ export default function Scanner() {
   }, []);
 
   const tick = useCallback(() => {
+    if (!scanningRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!scanningRef.current || !video || !canvas) return;
+    if (!video || !canvas) return;
+
     if (video.readyState === video.HAVE_ENOUGH_DATA && video.videoWidth > 0) {
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (ctx) {
-        const maxSide = 640;
-        const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
-        canvas.width = Math.round(video.videoWidth * scale);
-        canvas.height = Math.round(video.videoHeight * scale);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const decoded = decodeImageData(frame);
-        if (decoded) {
-          stopCamera();
-          handlePayload(decoded);
-          return;
+      // Decoding on every animation frame pins a phone CPU. Roughly eight
+      // frames per second is more than enough for a static QR code.
+      const now = performance.now();
+      if (now - lastScanAtRef.current >= 120) {
+        lastScanAtRef.current = now;
+        const ctx =
+          canvasCtxRef.current ??
+          (canvasCtxRef.current = canvas.getContext("2d", { willReadFrequently: true }));
+        if (ctx) {
+          const maxSide = 640;
+          const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
+          canvas.width = Math.round(video.videoWidth * scale);
+          canvas.height = Math.round(video.videoHeight * scale);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const decoded = decodeImageData(frame);
+          if (decoded) {
+            stopCamera();
+            handlePayload(decoded);
+            return;
+          }
         }
       }
     }
@@ -166,12 +179,11 @@ export default function Scanner() {
   }, [handlePayload, stopCamera]);
 
   const startCamera = useCallback(async () => {
+    if (streamRef.current) return;
     setError(null);
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraState("error");
-      setError(
-        t("qr.errCamera"),
-      );
+      setError(t("qr.errCamera"));
       return;
     }
     setCameraState("starting");
@@ -180,26 +192,35 @@ export default function Scanner() {
         video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } },
         audio: false,
       });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+      // The user may have switched tabs while the permission prompt was open.
+      if (!videoRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        setCameraState("idle");
+        return;
       }
+      streamRef.current = stream;
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
       setCameraState("on");
       scanningRef.current = true;
       rafRef.current = requestAnimationFrame(tick);
     } catch {
       setCameraState("error");
-      setError(
-        t("qr.errStart"),
-      );
+      setError(t("qr.errStart"));
     }
-  }, [tick]);
+  }, [t, tick]);
+
+  // Leaving the camera tab unmounts the <video>; stop the stream so the camera
+  // is not left running in the background.
+  useEffect(() => {
+    if (tab === "camera") return;
+    stopCamera();
+  }, [stopCamera, tab]);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
   const onFile = async (file: File | undefined) => {
-    if (!file) return;
+    if (!file || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -390,7 +411,12 @@ export default function Scanner() {
                   type="file"
                   accept="image/png,image/jpeg,image/webp,image/gif"
                   className="hidden"
-                  onChange={(e) => void onFile(e.target.files?.[0])}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    // Reset so choosing the same file again still fires a change.
+                    e.target.value = "";
+                    void onFile(file);
+                  }}
                 />
               </div>
 

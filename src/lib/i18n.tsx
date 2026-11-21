@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 export type Lang = "en" | "hi" | "as";
 
@@ -493,16 +493,27 @@ export const languages: { value: Lang; label: string; short: string }[] = [
   { value: "as", label: "অসমীয়া", short: "অস" },
 ];
 
-export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Lang>(() => {
+function readStoredLang(): Lang {
+  try {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored === "hi" || stored === "as" ? stored : "en";
-  });
+  } catch {
+    // Storage can be blocked (private mode, embedded webviews).
+    return "en";
+  }
+}
 
-  const setLang = (next: Lang) => {
+export function I18nProvider({ children }: { children: React.ReactNode }) {
+  const [lang, setLangState] = useState<Lang>(readStoredLang);
+
+  const setLang = useCallback((next: Lang) => {
     setLangState(next);
-    localStorage.setItem(STORAGE_KEY, next);
-  };
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      // The choice still applies for this session when storage is unavailable.
+    }
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -521,7 +532,11 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     [lang],
   );
 
-  return <I18nContext.Provider value={{ lang, setLang, t }}>{children}</I18nContext.Provider>;
+  // A stable context value keeps consumers from re-rendering when the provider
+  // itself re-renders for an unrelated reason.
+  const value = useMemo(() => ({ lang, setLang, t }), [lang, setLang, t]);
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
 export function useI18n() {

@@ -152,23 +152,19 @@ function ConvexDataProvider({ children }: { children: ReactNode }) {
 }
 
 export function ThreatDataProvider({ children }: { children: ReactNode }) {
-  const [client, setClient] = useState<ConvexReactClient | null>(null);
-
-  useEffect(() => {
-    if (!convexUrl) return;
+  // Create the client during the first render. Building it in an effect would
+  // mount the whole tree twice (demo provider, then Convex), throwing away
+  // in-progress scanner/checker state on every page load.
+  const [client] = useState<ConvexReactClient | null>(() => {
+    if (!convexUrl) return null;
     try {
-      const instance = new ConvexReactClient(convexUrl);
-      setClient(instance);
-      return () => {
-        void instance.close();
-      };
+      return new ConvexReactClient(convexUrl);
     } catch {
       // An unreachable deployment URL should never block the demonstration dashboard.
-      setClient(null);
+      return null;
     }
-  }, []);
+  });
 
-  if (!convexUrl) return <DemoDataProvider>{children}</DemoDataProvider>;
   if (!client) return <DemoDataProvider>{children}</DemoDataProvider>;
 
   return (

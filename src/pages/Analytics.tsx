@@ -61,6 +61,53 @@ const attackLog = [
   { title: "Investment platform clone", from: "ID", to: "IN", sev: "critical" as const, time: "10:04:57" },
 ];
 
+const APAC_REGION = new Set([
+  "India",
+  "Indonesia",
+  "Pakistan",
+  "Bangladesh",
+  "Philippines",
+  "Vietnam",
+  "China",
+  "Thailand",
+  "Malaysia",
+  "Australia",
+  "Japan",
+  "South Korea",
+  "Singapore",
+]);
+
+const EMEA_REGION = new Set([
+  "United Kingdom",
+  "Germany",
+  "France",
+  "Spain",
+  "Italy",
+  "Netherlands",
+  "United Arab Emirates",
+  "Saudi Arabia",
+  "South Africa",
+  "Kenya",
+  "Egypt",
+  "Turkey",
+  "Russia",
+  "Ukraine",
+  "Sweden",
+  "Ireland",
+  "Poland",
+]);
+
+const AMER_REGION = new Set([
+  "United States of America",
+  "Canada",
+  "Brazil",
+  "Mexico",
+  "Colombia",
+  "Argentina",
+  "Chile",
+  "Peru",
+]);
+
 export default function Analytics() {
   const { t } = useI18n();
   const { data } = useThreatData();
@@ -88,54 +135,13 @@ export default function Analytics() {
     const filtered =
       region === "all"
         ? rows
-        : rows.filter((r) => {
-            if (region === "apac")
-              return [
-                "India",
-                "Indonesia",
-                "Pakistan",
-                "Bangladesh",
-                "Philippines",
-                "Vietnam",
-                "China",
-                "Thailand",
-                "Malaysia",
-                "Australia",
-                "Japan",
-                "South Korea",
-                "Singapore",
-              ].includes(r.name);
-            if (region === "emea")
-              return [
-                "United Kingdom",
-                "Germany",
-                "France",
-                "Spain",
-                "Italy",
-                "Netherlands",
-                "United Arab Emirates",
-                "Saudi Arabia",
-                "South Africa",
-                "Kenya",
-                "Egypt",
-                "Turkey",
-                "Russia",
-                "Ukraine",
-                "Sweden",
-                "Ireland",
-                "Poland",
-              ].includes(r.name);
-            return [
-              "United States of America",
-              "Canada",
-              "Brazil",
-              "Mexico",
-              "Colombia",
-              "Argentina",
-              "Chile",
-              "Peru",
-            ].includes(r.name);
-          });
+        : rows.filter((r) =>
+            region === "apac"
+              ? APAC_REGION.has(r.name)
+              : region === "emea"
+                ? EMEA_REGION.has(r.name)
+                : AMER_REGION.has(r.name),
+          );
     return filtered.slice(0, 6);
   }, [data.countries, region]);
 
@@ -414,7 +420,7 @@ export default function Analytics() {
                         <span
                           className="block h-full rounded-full bg-[#2563eb]/70"
                           style={{
-                            width: `${Math.max(8, (r.reports / affectedRegions[0].reports) * 100)}%`,
+                            width: `${Math.max(8, (r.reports / (affectedRegions[0]?.reports || 1)) * 100)}%`,
                           }}
                         />
                       </span>

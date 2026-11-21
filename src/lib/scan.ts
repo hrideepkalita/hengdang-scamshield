@@ -206,7 +206,7 @@ export function analyzeUrl(raw: string): UrlAnalysis {
   return {
     url: parsed.toString(),
     hostname,
-    verdict: verdict === "dangerous" ? "dangerous" : verdict,
+    verdict,
     score: Math.min(99, score),
     reason,
     findings,
@@ -222,13 +222,17 @@ export function decodeImageData(data: ImageData): string | null {
 
 export async function decodeQrFromFile(file: File): Promise<string | null> {
   const bitmap = await createImageBitmap(file);
-  const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.drawImage(bitmap, 0, 0);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return decodeImageData(imageData);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(bitmap, 0, 0);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    return decodeImageData(imageData);
+  } finally {
+    // Release the decoded bitmap even when the canvas is unavailable.
+    bitmap.close();
+  }
 }

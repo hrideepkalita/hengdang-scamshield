@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -67,6 +67,23 @@ export function MessageCheck() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+  const previewUrlRef = useRef<string | null>(null);
+
+  // One owner for the screenshot blob URL, so replacing or clearing a preview
+  // cannot leak the previous object URL.
+  const replacePreview = useCallback((url: string | null) => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = url;
+    setPreview(url);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!analysis) return;
@@ -90,7 +107,7 @@ export function MessageCheck() {
     setText("");
     setLinkInput("");
     setError(null);
-    setPreview(null);
+    replacePreview(null);
     setOcrStatus(null);
   };
 
@@ -110,8 +127,7 @@ export function MessageCheck() {
     setAnalysis(null);
     setBusy(true);
     setOcrStatus({ label: t("mc.engine"), progress: 0 });
-    if (preview) URL.revokeObjectURL(preview);
-    setPreview(URL.createObjectURL(file));
+    replacePreview(URL.createObjectURL(file));
 
     try {
       const extracted = await extractTextFromImage(file, (label, progress) =>
@@ -262,7 +278,7 @@ export function MessageCheck() {
                   <button
                     type="button"
                     onClick={() => {
-                      setPreview(null);
+                      replacePreview(null);
                       setError(null);
                       setOcrStatus(null);
                     }}
@@ -428,8 +444,8 @@ export function MessageCheck() {
                   {t("mc.noticed")}
                 </h3>
                 <ul className="mt-2 space-y-2">
-                  {analysis.signals.map((signal) => (
-                    <li key={signal.label} className="flex gap-2.5">
+                  {analysis.signals.map((signal, index) => (
+                    <li key={`${signal.label}-${index}`} className="flex gap-2.5">
                       <span
                         className="mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full"
                         style={{ background: severityColor[signal.severity] }}
@@ -466,9 +482,9 @@ export function MessageCheck() {
                       {t("mc.linksTitle")}
                     </h3>
                     <ul className="mt-2 space-y-1.5">
-                      {analysis.links.slice(0, 4).map((link) => (
+                      {analysis.links.slice(0, 4).map((link, index) => (
                         <li
-                          key={link.url}
+                          key={`${link.url}-${index}`}
                           className="flex items-center gap-2 rounded-xl border border-[#e2eaf9] bg-[#f7faff] px-2.5 py-1.5"
                         >
                           <Link2 size={11} className="shrink-0 text-[#93a2bf]" />

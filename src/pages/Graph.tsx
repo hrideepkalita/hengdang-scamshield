@@ -56,6 +56,8 @@ export default function Graph() {
   const [view, setView] = useState({ k: 1, x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
+  const panFrameRef = useRef<number | null>(null);
+  const panTargetRef = useRef<{ x: number; y: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [blocked, setBlocked] = useState<string[]>([]);
@@ -126,6 +128,13 @@ export default function Graph() {
     });
   }, []);
 
+  useEffect(
+    () => () => {
+      if (panFrameRef.current !== null) cancelAnimationFrame(panFrameRef.current);
+    },
+    [],
+  );
+
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -147,9 +156,11 @@ export default function Graph() {
       prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
     );
 
+  const enabledSet = useMemo(() => new Set(enabled), [enabled]);
+  const normalizedQuery = query.trim().toLowerCase();
   const isDim = (n: GraphNode) => {
-    if (!enabled.includes(n.reputation)) return true;
-    if (query && !n.label.toLowerCase().includes(query.toLowerCase())) return true;
+    if (!enabledSet.has(n.reputation)) return true;
+    if (normalizedQuery && !n.label.toLowerCase().includes(normalizedQuery)) return true;
     return false;
   };
 
@@ -247,11 +258,20 @@ export default function Graph() {
                   onPointerMove={(e) => {
                     if (!dragging || !wrapRef.current) return;
                     const rect = wrapRef.current.getBoundingClientRect();
-                    setView((v) => ({
-                      ...v,
+                    // Pointer events fire faster than the browser paints. Apply
+                    // at most one transform per frame so panning stays smooth
+                    // instead of re-rendering the whole graph per event.
+                    panTargetRef.current = {
                       x: dragStart.current.vx + (e.clientX - dragStart.current.x) * (W / rect.width),
                       y: dragStart.current.vy + (e.clientY - dragStart.current.y) * (H / rect.height),
-                    }));
+                    };
+                    if (panFrameRef.current !== null) return;
+                    panFrameRef.current = requestAnimationFrame(() => {
+                      panFrameRef.current = null;
+                      const next = panTargetRef.current;
+                      if (!next) return;
+                      setView((v) => ({ ...v, x: next.x, y: next.y }));
+                    });
                   }}
                   onPointerUp={() => setDragging(false)}
                   onPointerLeave={() => setDragging(false)}
